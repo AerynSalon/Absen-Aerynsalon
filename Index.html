@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sistem Absensi Digital</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js"></script>
+  <style>
+    :root { --primary:#3B82F6; --secondary:#10B981; --accent:#F59E0B; --dark:#1F2937; --light:#F9FAFB; }
+    body { background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); min-height:100vh; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .card { backdrop-filter: blur(10px); background: rgba(255,255,255,.95); border:1px solid rgba(255,255,255,.2); }
+    .loader { border-top-color: var(--primary); animation: spin 1s linear infinite; }
+    @keyframes spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+    .history-item { transition: all .3s ease; } .history-item:hover { transform: translateX(5px); }
+    @keyframes aeryn-marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+    .ann-bar { position: relative; overflow: hidden; }
+    .ann-track { white-space: nowrap; animation: aeryn-marquee 16s linear infinite; }
+    .ann-bar:hover .ann-track { animation-play-state: paused; }
+    .modal-bg { background: rgba(0,0,0,.6); }
+    .toast { position: fixed; right: 16px; bottom: 16px; background:#10B981; color:#fff; padding:10px 14px; border-radius:10px; display:none; }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+  <div class="card rounded-2xl shadow-2xl w-full max-w-5xl p-6 md:p-8">
+    <div class="text-center mb-4">
+      <div class="flex items-center justify-center mb-4">
+        <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mr-4">
+          <i class="fas fa-fingerprint text-3xl text-blue-600"></i>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Sistem Absensi Digital</h1>
+      </div>
+      <p class="text-gray-600">Absensi karyawan terintegrasi dengan Google Sheets (One-Host)</p>
+    </div>
+
+    <div class="ann-bar rounded-lg border border-purple-200 bg-purple-50 mb-6">
+      <div class="ann-track py-2 px-4 text-purple-800 font-medium flex items-center">
+        <i class="fas fa-praying-hands mr-2"></i>
+        <span>jangan lupa berdoa sebelum bekerja, tetap semangat team AerynSalon</span>
+        <i class="fas fa-praying-hands mx-6 opacity-60"></i>
+        <span>jangan lupa berdoa sebelum bekerja, tetap semangat team AerynSalon</span>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-8">
+      <div class="space-y-6">
+        <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xl font-semibold text-blue-800 mb-3">Absensi Sekarang</h2>
+            <button type="button" id="openQrBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-3 rounded-lg transition-all text-sm">
+              <i class="fas fa-camera mr-1"></i> Scan QR
+            </button>
+          </div>
+
+          <!-- Employee DB picker -->
+          <div class="bg-white border rounded-lg p-3 mb-3">
+            <div class="flex items-center justify-between mb-2">
+              <label class="font-medium text-gray-800"><i class="fas fa-user-group mr-2 text-blue-600"></i>Pilih Karyawan (dari Database)</label>
+              <div class="text-xs text-gray-500" id="empStatus">Memuat data...</div>
+            </div>
+            <div class="flex gap-2">
+              <input id="employeeSearch" placeholder="Cari nama atau ID..." class="flex-1 px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+              <button type="button" id="clearSearchBtn" class="px-3 border rounded-md text-sm text-gray-700 hover:bg-gray-100">Bersihkan</button>
+            </div>
+            <div class="mt-2 max-h-40 overflow-y-auto border rounded-md">
+              <select id="employeeSelect" size="6" class="w-full p-2 outline-none">
+                <option value="">(memuat...)</option>
+              </select>
+            </div>
+            <div class="text-xs text-gray-500 mt-2">Tidak menemukan nama? <button id="toggleManualBtn" class="underline">Input manual</button></div>
+          </div>
+
+          <form id="attendanceForm" class="space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Nama Karyawan</label>
+                <input id="employeeName" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Masukkan nama lengkap" disabled>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">ID Karyawan</label>
+                <input id="employeeId" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Masukkan ID karyawan" disabled>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Jenis Absensi</label>
+              <select id="attendanceType" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                <option value="Masuk">Masuk</option><option value="Pulang">Pulang</option><option value="Izin">Izin</option><option value="Sakit">Sakit</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Keterangan</label>
+              <textarea id="notes" rows="3" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Tambahkan keterangan (opsional)"></textarea>
+            </div>
+            <div id="locationInfo" class="bg-gray-50 p-3 rounded-lg mb-4">
+              <div class="flex items-center"><i class="fas fa-map-marker-alt text-red-500 mr-2"></i><span class="text-sm text-gray-600">Mendeteksi lokasi...</span></div>
+            </div>
+            <div class="flex gap-3">
+              <button type="submit" id="submitBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-all">
+                <i class="fas fa-paper-plane mr-2"></i> Simpan Absensi
+              </button>
+            </div>
+          </form>
+        </div>
+        <div id="statusIndicator" class="hidden p-4 rounded-lg">
+          <div class="flex items-center">
+            <div id="loader" class="loader border-4 border-gray-200 border-t-blue-600 rounded-full w-8 h-8 mr-3"></div>
+            <span id="statusText" class="text-gray-700"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        <div class="bg-white p-6 rounded-lg shadow-sm border">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-gray-800">Riwayat Absensi Terbaru</h2>
+            <button id="refreshBtn" class="text-blue-600 hover:text-blue-800 transition-colors" title="Muat ulang">
+              <i class="fas fa-sync-alt"></i>
+            </button>
+          </div>
+          <div id="recentAttendances" class="space-y-3 max-h-60 overflow-y-auto">
+            <div class="text-center text-gray-500 py-8">
+              <i class="fas fa-history text-3xl mb-2"></i><p>Belum ada riwayat absensi</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-sm border">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">Informasi Waktu</h2>
+          <div class="text-center">
+            <div class="text-4xl md:text-5xl font-bold text-blue-600 mb-2" id="currentTime">00:00:00</div>
+            <div class="text-lg text-gray-600" id="currentDate">Hari, DD MMMM YYYY</div>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-sm border">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">Scan QR Code</h2>
+          <div class="text-center text-gray-500">
+            <p>Gunakan tombol <strong>Scan QR</strong> di form untuk memindai dengan kamera.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-8 pt-6 border-t border-gray-200">
+      <div class="flex flex-col md:flex-row justify-between items-center">
+        <div class="text-gray-600 text-sm"><p>© 2024 Sistem Absensi Digital. Terhubung dengan Google Sheets.</p></div>
+        <div class="flex space-x-4 mt-4 md:mt-0">
+          <button id="footerRefreshBtn" class="text-blue-600 hover:text-blue-800 transition-colors"><i class="fas fa-sync-alt"></i></button>
+          <button class="text-green-600 hover:text-green-800 transition-colors"><i class="fas fa-download"></i></button>
+          <button class="text-purple-600 hover:text-purple-800 transition-colors"><i class="fas fa-cog"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal QR Scanner -->
+  <div id="qrModal" class="modal-bg fixed inset-0 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-semibold text-gray-800"><i class="fas fa-qrcode mr-2"></i>Scan QR</h3>
+        <button id="closeQrBtn" class="text-gray-500 hover:text-gray-700"><i class="fas fa-times text-xl"></i></button>
+      </div>
+      <div id="qrReader" class="rounded-lg overflow-hidden border" style="width:100%; height: 320px;"></div>
+      <div id="qrStatus" class="text-xs text-gray-500 mt-2">Arahkan kamera ke QR karyawan…</div>
+      <div class="flex items-center justify-between mt-3">
+        <button id="switchCameraBtn" class="bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-2 rounded-lg"><i class="fas fa-sync-alt mr-2"></i>Ganti Kamera</button>
+        <button id="torchBtn" class="bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-2 rounded-lg"><i class="fas fa-bolt mr-2"></i>Senter</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simple success modal -->
+  <div id="successModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white p-8 rounded-2xl text-center max-w-sm mx-4">
+      <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <i class="fas fa-check text-3xl text-green-600"></i>
+      </div>
+      <h3 class="text-xl font-semibold text-gray-800 mb-2">Absensi Berhasil!</h3>
+      <p class="text-gray-600 mb-6" id="successMessage">Data absensi telah tersimpan.</p>
+      <button id="closeSuccessBtn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition-all">Tutup</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast">Tersimpan</div>
+
+  <script>
+    // === Util ===
+    function updateDateTime() {
+      const now = new Date();
+      document.getElementById('currentTime').textContent = now.toLocaleTimeString('id-ID');
+      document.getElementById('currentDate').textContent = now.toLocaleDateString('id-ID',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    }
+    function getLocation() {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const lat = pos.coords.latitude.toFixed(6), lng = pos.coords.longitude.toFixed(6);
+          document.getElementById('locationInfo').innerHTML = `<div class="flex items-center"><i class="fas fa-map-marker-alt text-green-500 mr-2"></i><span class="text-sm text-gray-600">Lokasi: ${lat}, ${lng}</span></div>`;
+        },
+        _ => {
+          document.getElementById('locationInfo').innerHTML = `<div class="flex items-center"><i class="fas fa-map-marker-alt text-red-500 mr-2"></i><span class="text-sm text-gray-600">Lokasi tidak dapat diakses</span></div>`;
+        }
+      );
+    }
+    function setLoading(isLoading, msg='Mengirim data...') {
+      const indicator = document.getElementById('statusIndicator');
+      const statusText = document.getElementById('statusText');
+      const submitBtn = document.getElementById('submitBtn');
+      if (isLoading) { indicator.classList.remove('hidden'); statusText.textContent = msg; submitBtn.disabled = true; submitBtn.classList.add('opacity-50'); }
+      else { indicator.classList.add('hidden'); submitBtn.disabled = false; submitBtn.classList.remove('opacity-50'); }
+    }
+    function showSuccessModal(message){ document.getElementById('successMessage').textContent = message; document.getElementById('successModal').classList.remove('hidden'); }
+    function closeModal(){ document.getElementById('successModal').classList.add('hidden'); }
+    function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg||'Tersimpan'; t.style.display='block'; setTimeout(()=>t.style.display='none',1500); }
+
+    // === Server RPC ===
+    function fetchRecent(limit=20){
+      google.script.run.withSuccessHandler(renderRecent).getRecent(limit);
+    }
+    function fetchEmployees(){
+      const status = document.getElementById('empStatus');
+      status.textContent = 'Memuat data...';
+      google.script.run.withSuccessHandler(items => {
+        const active = (items||[]).filter(x => String(x.active).toLowerCase() !== 'false');
+        EMP_LIST = active;
+        renderEmployeeOptions(EMP_LIST);
+        status.textContent = `Memuat (${EMP_LIST.length})`;
+      }).withFailureHandler(err => {
+        status.textContent = 'Gagal memuat';
+        console.error(err);
+      }).getEmployees();
+    }
+    function saveAttendanceRPC(payload, onDone, onFail){
+      google.script.run.withSuccessHandler(onDone).withFailureHandler(onFail).saveAttendance(payload);
+    }
+
+    function renderRecent(items) {
+      const recent = document.getElementById('recentAttendances');
+      recent.innerHTML = '';
+      if (!items || !items.length) {
+        recent.innerHTML = `<div class="text-center text-gray-500 py-8"><i class="fas fa-history text-3xl mb-2"></i><p>Belum ada riwayat absensi</p></div>`;
+        return;
+      }
+      for (const data of items) {
+        const item = document.createElement('div');
+        item.className = 'history-item bg-gray-50 p-3 rounded-lg';
+        const timeStr = data.timestamp ? new Date(data.timestamp).toLocaleString('id-ID') : '';
+        item.innerHTML = `<div class="flex justify-between items-start">
+          <div>
+            <div class="font-semibold text-gray-800">${data.name || '-'}</div>
+            <div class="text-sm text-gray-600">ID: ${data.id || '-'}</div>
+          </div>
+          <span class="px-2 py-1 text-xs rounded-full ${
+            data.type==='Masuk'?'bg-blue-100 text-blue-800':
+            data.type==='Pulang'?'bg-green-100 text-green-800':
+            data.type==='Izin'?'bg-yellow-100 text-yellow-800':'bg-red-100 text-red-800'
+          }">${data.type || '-'}</span></div>
+          <div class="text-xs text-gray-500 mt-2">${timeStr}</div>`;
+        recent.appendChild(item);
+      }
+    }
+
+    // === Employee DB ===
+    let EMP_LIST = [];
+    function renderEmployeeOptions(list) {
+      const sel = document.getElementById('employeeSelect');
+      sel.innerHTML = '';
+      if (!list.length) {
+        sel.innerHTML = '<option value="">(tidak ada hasil)</option>';
+        return;
+      }
+      for (const e of list) {
+        const opt = document.createElement('option');
+        opt.value = e.id;
+        opt.textContent = `${e.name} — ${e.id}${e.dept?(' — '+e.dept):''}`;
+        opt.dataset.name = e.name;
+        opt.dataset.dept = e.dept||'';
+        opt.dataset.role = e.role||'';
+        sel.appendChild(opt);
+      }
+    }
+    function applySelectedEmployee() {
+      const sel = document.getElementById('employeeSelect');
+      const opt = sel.options[sel.selectedIndex];
+      if (!opt || !opt.value) return;
+      document.getElementById('employeeId').value = opt.value;
+      document.getElementById('employeeName').value = opt.dataset.name || '';
+    }
+    function filterEmployees(q) {
+      q = (q||'').toLowerCase().trim();
+      if (!q) return EMP_LIST.slice(0, 200);
+      return EMP_LIST.filter(e => (e.name||'').toLowerCase().includes(q) || (e.id||'').toLowerCase().includes(q) || (e.dept||'').toLowerCase().includes(q));
+    }
+
+    // === Submit ===
+    document.getElementById('attendanceForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = document.getElementById('employeeName').value.trim();
+      const id = document.getElementById('employeeId').value.trim();
+      const type = document.getElementById('attendanceType').value;
+      const notes = document.getElementById('notes').value.trim();
+      if (!name || !id) { alert('Nama dan ID karyawan harus diisi!'); return; }
+      const payload = { name, id, type, notes, location: document.getElementById('locationInfo').textContent };
+
+      setLoading(true, 'Menyimpan ke Google Sheets...');
+      saveAttendanceRPC(payload, (res) => {
+        setLoading(false);
+        showSuccessModal(`Absensi ${type} untuk ${name} berhasil dicatat.`);
+        document.getElementById('attendanceForm').reset();
+        fetchRecent(20);
+        toast('Absensi tersimpan');
+      }, (err) => {
+        setLoading(false);
+        alert('Gagal menyimpan: ' + err.message);
+      });
+    });
+
+    // === QR Scanner ===
+    let html5Qr, cameras=[], camIndex=0;
+    const qrModal = document.getElementById('qrModal');
+    const openQrBtn = document.getElementById('openQrBtn');
+    const closeQrBtn = document.getElementById('closeQrBtn');
+    const switchCameraBtn = document.getElementById('switchCameraBtn');
+    const torchBtn = document.getElementById('torchBtn');
+    const qrStatus = document.getElementById('qrStatus');
+    const qrReaderDivId = "qrReader";
+
+    function showQrModal() { qrModal.classList.remove('hidden'); qrModal.classList.add('flex'); }
+    function hideQrModal() { qrModal.classList.add('hidden'); qrModal.classList.remove('flex'); }
+
+    function pickInitialCamera(list) {
+      let idx = 0;
+      for (let i=0;i<list.length;i++) {
+        const label = (list[i].label||'').toLowerCase();
+        if (label.includes('back') || label.includes('rear') || label.includes('environment')) { idx = i; break; }
+      }
+      return idx;
+    }
+
+    function parseQr(text) {
+      let id='', name='', type='';
+      try { const obj = JSON.parse(text); id = obj.id || obj.employeeId || ''; name = obj.name || obj.employeeName || ''; type = obj.type || obj.attendance || ''; if (id || name) return { id, name, type }; } catch(_){}
+      if (text.includes('=')) { const params = new URLSearchParams(text); id = params.get('id') || params.get('employeeId') || ''; name = params.get('name') || params.get('employeeName') || ''; type = params.get('type') || params.get('attendance') || ''; if (id || name) return { id, name, type }; }
+      if (text.includes('|')) { const p = text.split('|').map(s=>s.trim()); if (p.length >= 3) { id = p[p.length-3]; name = p[p.length-2]; type = p[p.length-1] || ''; return { id, name, type }; } }
+      if (text.includes(',')) { const p = text.split(',').map(s=>s.trim()); if (p.length >= 2) { id = p[0]; name = p[1]; type = p[2] || ''; return { id, name, type }; } }
+      return { id: text.trim(), name: '', type: '' };
+    }
+
+    async function startScanner() {
+      try {
+        if (!html5Qr) html5Qr = new Html5Qrcode(qrReaderDivId, { verbose: false });
+        cameras = await Html5Qrcode.getCameras();
+        if (!cameras || !cameras.length) { qrStatus.textContent = 'Kamera tidak ditemukan.'; return; }
+        const camId = cameras[pickInitialCamera(cameras)].id;
+        showQrModal();
+        await html5Qr.start(camId, { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 }, onScanSuccess, onScanFailure);
+        qrStatus.textContent = 'Memindai...';
+      } catch (err) { console.error(err); qrStatus.textContent = 'Gagal membuka kamera. Pastikan situs HTTPS.'; }
+    }
+    async function stopScanner() { if (html5Qr && html5Qr.isScanning) { try { await html5Qr.stop(); } catch(e) {} } }
+    async function switchCamera() { if (!cameras.length) return; try { await stopScanner(); camIndex = (camIndex+1)%cameras.length; await html5Qr.start(cameras[camIndex].id, { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 }, onScanSuccess, onScanFailure); qrStatus.textContent='Memindai (kamera lain)...'; } catch(e){ qrStatus.textContent='Gagal ganti kamera.'; } }
+    async function toggleTorch() { try { const on = await html5Qr.turnOnCameraTorch(); if (on===true){ qrStatus.textContent='Senter: ON'; } else if (on===false) { await html5Qr.turnOffCameraTorch(); qrStatus.textContent='Senter: OFF'; } else { qrStatus.textContent='Senter tdk didukung.'; } } catch(e){ try{ await html5Qr.turnOffCameraTorch(); }catch(_){ } qrStatus.textContent='Gagal senter.'; } }
+    function onScanFailure(err) {}
+
+    async function onScanSuccess(decodedText) {
+      try {
+        await stopScanner(); hideQrModal();
+        const { id, name, type } = parseQr(decodedText||'');
+        if (id) document.getElementById('employeeId').value = id;
+        if (name) document.getElementById('employeeName').value = name;
+        if (type) document.getElementById('attendanceType').value = type;
+        const status = document.getElementById('statusIndicator'); const statusText = document.getElementById('statusText'); status.classList.remove('hidden'); statusText.textContent = `QR terbaca: ${id || name || decodedText.substring(0,32)}...`; setTimeout(()=>status.classList.add('hidden'), 2000);
+      } catch (e) { console.error(e); qrStatus.textContent = 'Kesalahan memproses QR.'; }
+    }
+
+    // Events
+    document.getElementById('openQrBtn').addEventListener('click', startScanner);
+    document.getElementById('closeQrBtn').addEventListener('click', async ()=>{ await stopScanner(); hideQrModal(); });
+    document.getElementById('switchCameraBtn').addEventListener('click', switchCamera);
+    document.getElementById('torchBtn').addEventListener('click', toggleTorch);
+
+    document.getElementById('employeeSelect').addEventListener('change', () => { setManualEnabled(false); applySelectedEmployee(); });
+    document.getElementById('employeeSearch').addEventListener('input', (e) => { const list = filterEmployees(e.target.value); renderEmployeeOptions(list); });
+    document.getElementById('clearSearchBtn').addEventListener('click', () => { document.getElementById('employeeSearch').value=''; renderEmployeeOptions(EMP_LIST); });
+    document.getElementById('toggleManualBtn').addEventListener('click', () => setManualEnabled(!manualEnabled));
+
+    // Toggle manual
+    let manualEnabled = false;
+    function setManualEnabled(v) {
+      manualEnabled = !!v;
+      document.getElementById('employeeName').disabled = !manualEnabled;
+      document.getElementById('employeeId').disabled = !manualEnabled;
+    }
+
+    // Init
+    document.addEventListener('DOMContentLoaded', () => {
+      updateDateTime(); setInterval(updateDateTime, 1000);
+      getLocation();
+      fetchEmployees();
+      fetchRecent(20);
+      document.getElementById('refreshBtn').addEventListener('click', () => fetchRecent(20));
+      document.getElementById('footerRefreshBtn').addEventListener('click', () => fetchRecent(20));
+      setManualEnabled(false);
+      document.getElementById('closeSuccessBtn').addEventListener('click', closeModal);
+    });
+    window.addEventListener('online', () => console.log('Online'));
+    window.addEventListener('offline', () => alert('Tidak ada koneksi internet.'));
+  </script>
+</body>
+</html>
